@@ -1,0 +1,91 @@
+#!/usr/bin/env ruby
+
+require 'yaml'
+require 'fileutils'
+
+$my_dir = File.dirname($0)
+$conf_dir = $my_dir
+$certs_dir = "#{$conf_dir}/certs"
+
+require 'shell'
+require File.join $my_dir,'verbose-shell.rb'
+Sh=Shell.new
+Vsh = VerboseShell
+
+require 'optparse'
+(opts=OptionParser.new do |opts|
+   opts.banner = "Usage:\n\t#{$0} [options]"
+   opts.on("-v", "--verbose",              "Turn up the verbosity")                                     { |v| $verbose = (($verbose||0))+1 }
+   opts.on("-c", "--config CONFDIR",       "Use this config dir (default: #{$conf_dir})")               { |d| $conf_dir = d }
+   opts.on("--staging",                    "Use the letsencrypt staging CA")                            { |s| $staging = "https://acme-staging.api.letsencrypt.org" }
+ end).parse!
+
+Vsh.verbose = ($verbose||0) > 1
+
+def load_config(file)
+  config = YAML.load_file(file)
+
+  (config["include"]||[]).map { |file| load_config(file) }.reduce(config) { |config, c| config.merge(c) }
+end
+
+def file(info, type, format="pem")
+  "#{$certs_dir}/#{info['name']}.#{type}.#{format}"
+end
+
+def generate_csr(info)
+  puts "generating key + csr: #{file(info,"key")}, #{file(info,"csr")}" if ($verbose||0) == 1
+  Vsh.system(*%W"#{$my_dir}/new-csr #{file(info,"key")} #{file(info,"csr")}
+                    --hash=#{info["HASH"]        || $config["HASH"]}
+                    --bits=#{info["RSA_BITS"]    || $config["RSA_BITS"]}
+                    --days=#{info["EXPIRE_DAYS"] || $config["EXPIRE_DAYS"]}"+
+             %w"country state locality organization section cn email".map {|p| info[p] && "--#{p}=#{info[p]}" }.select {|s| s}+
+             (info['alt'] ? info['alt'].map {|a| a['DNS'] }.select {|a| a}.map {|a| "--alt-dns=#{a}" } : [])
+            )
+  Vsh.chown info['user'], info['group'], file(info,"key")
+end
+
+def generate_cert(info)
+  puts "generating cert: #{file(info,"cert")}" if ($verbose||0) == 1
+  (well_known_host, well_known_dir) = [$1,$2] if (info['well-known']||'') =~ /^(?:((?:\w+@)?[^:]+):)?(.+)$/
+  well_known_dir ||= '/var/www/well-known/acme-challenge/'
+  Vsh.system *(%W<python #{$my_dir}/acme-tiny/acme_tiny.py --account-key #{$my_dir}/letsencrypt-account.key --csr #{file(info,"csr")} --acme-dir #{well_known_dir} --out #{file(info,"cert")}> +
+               ($staging ? ['--ca', $staging] : []) +
+               (well_known_host ? ['--acme-host', well_known_host] : []))
+end
+
+def generate_combined_cert(info)
+  puts "generating combined cert: #{file(info,"combined")}" if ($verbose||0) == 1
+  IO.write(file(info,"combined"), IO.read(file(info,"cert")) + IO.read(file(info,"key")), perm: 0640)
+  Vsh.chown info['user'], info['group'], file(info,"combined")
+end
+
+def generate_fingerprint(info)
+  puts "generating fingerprint: #{file(info,"cert","fingerprint")}" if ($verbose||0) == 1
+  Sh.system(*%W"openssl x509 -in #{file(info,"cert")} -fingerprint -noout") > file(info,"cert","fingerprint")
+end
+
+def generate_der(info)
+  puts "generating der: #{file(info,"key","der")}, #{file(info,"cert","der")}" if ($verbose||0) == 1
+  Vsh.system *%W"openssl x509 -in #{file(info,"cert")} -outform der -out #{file(info,"cert","der")}"
+  Vsh.system *%W"openssl rsa  -in #{file(info,"key") } -outform der -out #{file(info,"key", "der")}"
+  Vsh.chmod "o-rw,g-w", file(info,"key","der")
+  Vsh.chown info['user'], info['group'], file(info,"key","der")
+end
+
+conf_file = "#{$conf_dir}/config.yaml"
+$config = load_config(conf_file)
+
+$config.select {|k,v| v.class == Hash}.each do |name, info|
+  info['name'] = name
+  puts "Considering: #{info.inspect}"  if ($verbose||0) > 2
+  generate_csr(info) unless File.exist? file(info,"key") and File.exist? file(info,"csr")
+  generate_cert(info) unless File.exist? file(info,"cert")
+  generate_combined_cert(info) unless File.exist? file(info,"combined") or !info['combined']
+  generate_fingerprint(info) unless File.exist? file(info,"cert.fingerprint") or !info['fingerprint']
+  generate_der(info) unless File.exist? file(info,"cert", "der") and File.exist? file(info,"key", "der") or !info['der']
+end
+
+#require 'pp'
+
+#pp $config
+
