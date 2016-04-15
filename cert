@@ -2,10 +2,12 @@
 
 require 'yaml'
 require 'fileutils'
+require 'openssl'
 
 $my_dir = File.dirname($0)
 $conf_dir = $my_dir
 $certs_dir = "#{$conf_dir}/certs"
+$old_dir = "#{$conf_dir}/old"
 
 require 'shell'
 require File.join $my_dir,'verbose-shell.rb'
@@ -82,12 +84,28 @@ def scp_certs(info)
   Vsh.system *%W"scp #{file(info,"cert")} #{file(info,"key")} #{info['scp']}"
 end
 
+def seconds_til_expiry(file)
+  OpenSSL::X509::Certificate.new(File.read file).not_after - Time.now
+end
+def days_til_expiry(file)
+  seconds_til_expiry(file) / 3600 / 24
+end
+
 conf_file = "#{$conf_dir}/config.yaml"
 $config = load_config(conf_file)
 
 $config.select {|k,v| v.class == Hash}.each do |name, info|
   info['name'] = name
   puts "Considering: #{info.inspect}"  if ($verbose||0) > 2
+  if File.exist?(file(info,"cert")) && days_til_expiry(file(info,"cert")) < 10
+    puts "Renewing #{file(info,"cert")} because there are only #{days_til_expiry(file(info,"cert")).to_i} days until it expires." if ($verbose||0) == 1
+    Vsh.mkdir_p("old")
+    %w(key cert csr combined cert.fingerprint der).each do |kind|
+      src = file(info,*kind.split('.'))
+      Vsh.mv(src, "#{$old_dir}/#{Time.now.strftime("%Y-%m-%d")}-#{File.basename(src)}") if File.exist? src
+    end
+  end
+
   generate_csr(info) unless File.exist? file(info,"key") and File.exist? file(info,"csr")
   generate_cert(info) unless File.exist? file(info,"cert")
   generate_combined_cert(info) unless File.exist? file(info,"combined") or !info['combined']
