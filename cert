@@ -51,6 +51,11 @@ def generate_cert(info)
   Vsh.system *(%W<python #{$my_dir}/acme-tiny/acme_tiny.py --account-key #{$my_dir}/letsencrypt-account.key --csr #{file(info,"csr")} --acme-dir #{well_known_dir} --out #{file(info,"cert")}> +
                ($staging ? ['--ca', $staging] : []) +
                (well_known_host ? ['--acme-host', well_known_host] : []))
+  if $config["INTERMEDIATE"]
+    puts "appending intermediate to cert: #{file(info,"cert")}" if ($verbose||0) == 1
+    IO.write(file(info,"cert"), IO.read($config["INTERMEDIATE"]), perm: 0640, mode: "a")
+    Vsh.chown info['user'], info['group'], file(info,"combined")
+  end
 end
 
 def generate_combined_cert(info)
