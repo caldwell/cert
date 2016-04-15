@@ -77,6 +77,11 @@ def generate_der(info)
   Vsh.chown info['user'], info['group'], file(info,"key","der")
 end
 
+def scp_certs(info)
+  puts "copying key and cert: #{info['scp']}" if ($verbose||0) == 1
+  Vsh.system *%W"scp #{file(info,"cert")} #{file(info,"key")} #{info['scp']}"
+end
+
 conf_file = "#{$conf_dir}/config.yaml"
 $config = load_config(conf_file)
 
@@ -88,6 +93,7 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
   generate_combined_cert(info) unless File.exist? file(info,"combined") or !info['combined']
   generate_fingerprint(info) unless File.exist? file(info,"cert.fingerprint") or !info['fingerprint']
   generate_der(info) unless File.exist? file(info,"cert", "der") and File.exist? file(info,"key", "der") or !info['der']
+  scp_certs(info) if info['scp']
 end
 
 #require 'pp'
