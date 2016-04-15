@@ -6,8 +6,6 @@ require 'openssl'
 
 $my_dir = File.dirname($0)
 $conf_dir = $my_dir
-$certs_dir = "#{$conf_dir}/certs"
-$old_dir = "#{$conf_dir}/old"
 
 require 'shell'
 require File.join $my_dir,'verbose-shell.rb'
@@ -21,6 +19,9 @@ require 'optparse'
    opts.on("-c", "--config CONFDIR",       "Use this config dir (default: #{$conf_dir})")               { |d| $conf_dir = d }
    opts.on("--staging",                    "Use the letsencrypt staging CA")                            { |s| $staging = "https://acme-staging.api.letsencrypt.org" }
  end).parse!
+
+$certs_dir = "#{$conf_dir}/certs"
+$old_dir = "#{$conf_dir}/old"
 
 Vsh.verbose = ($verbose||0) > 1
 
