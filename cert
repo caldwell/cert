@@ -91,7 +91,7 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
   generate_csr(info) unless File.exist? file(info,"key") and File.exist? file(info,"csr")
   generate_cert(info) unless File.exist? file(info,"cert")
   generate_combined_cert(info) unless File.exist? file(info,"combined") or !info['combined']
-  generate_fingerprint(info) unless File.exist? file(info,"cert.fingerprint") or !info['fingerprint']
+  generate_fingerprint(info) unless File.exist? file(info,"cert","fingerprint") or !info['fingerprint']
   generate_der(info) unless File.exist? file(info,"cert", "der") and File.exist? file(info,"key", "der") or !info['der']
   scp_certs(info) if info['scp']
 end
