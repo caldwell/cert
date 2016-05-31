@@ -21,7 +21,6 @@ require 'optparse'
  end).parse!
 
 $certs_dir = "#{$conf_dir}/certs"
-$old_dir = "#{$conf_dir}/old"
 
 Vsh.verbose = ($verbose||0) > 1
 
@@ -32,6 +31,10 @@ def load_config(file)
 end
 
 def file(info, type, format="pem")
+  "#{$certs_dir}/#{info['year']}/#{info['name']}-#{info['date']}.#{type}.#{format}"
+end
+
+def file_master(info, type, format="pem")
   "#{$certs_dir}/#{info['name']}.#{type}.#{format}"
 end
 
@@ -91,26 +94,48 @@ def days_til_expiry(file)
   seconds_til_expiry(file) / 3600 / 24
 end
 
+def shortest_link_path(src, dst)
+  src = File.absolute_path(src)
+  dst = File.absolute_path(dst)
+  sa = src.split(File::SEPARATOR)
+  da = dst.split(File::SEPARATOR)
+  while sa[0] == da[0]
+    sa.shift
+    da.shift
+  end
+  [sa.join(File::SEPARATOR), da.join(File::SEPARATOR)]
+end
+
 conf_file = "#{$conf_dir}/config.yaml"
 $config = load_config(conf_file)
 
 $config.select {|k,v| v.class == Hash}.each do |name, info|
   info['name'] = name
   puts "Considering: #{info.inspect}"  if ($verbose||0) > 2
-  if File.exist?(file(info,"cert")) && days_til_expiry(file(info,"cert")) < 10
-    puts "Renewing #{file(info,"cert")} because there are only #{days_til_expiry(file(info,"cert")).to_i} days until it expires." if ($verbose||0) == 1
-    Vsh.mkdir_p("old")
-    %w(key cert csr combined cert.fingerprint der).each do |kind|
-      src = file(info,*kind.split('.'))
-      Vsh.mv(src, "#{$old_dir}/#{Time.now.strftime("%Y-%m-%d")}-#{File.basename(src)}") if File.exist? src
+  time = File.exist?(file_master(info,"cert")) && days_til_expiry(file_master(info,"cert")) > 10 ? File.stat(file_master(info,"cert")).mtime : Time.now
+  info['date'] = time.strftime("%Y-%m-%d")
+  info['year'] = time.strftime("%Y")
+  [
+    [ :generate_csr,           [["key"],["csr"]],               true ],
+    [ :generate_cert,          [["cert"]],                      true ],
+    [ :generate_combined_cert, [["combined"]],                  info['combined'] ],
+    [ :generate_fingerprint,   [["cert", "fingerprint"]],       info['fingerprint'] ],
+    [ :generate_der,           [["cert", "der"],["key","der"]], info['der'] ],
+  ].map do |method, file_param, doit|
+    next unless doit
+    send(method, info) unless file_param.map { |p| file(info, *p) }.all? {|file| File.exist?(file) }
+    file_param
+  end.select { |fp| fp }.each do |files|
+    files.each do |file_param|
+      link = file_master(info, *file_param)
+      master = file(info, *file_param)
+      next if File.exist?(link) && File.absolute_path(File.readlink(link), $certs_dir) == File.absolute_path(master)
+      (master,) = shortest_link_path(master, link)
+      puts "#{link} -> #{master}" if ($verbose||0) == 1
+      Vsh.unlink(link)
+      Vsh.ln_s(master, link)
     end
   end
-
-  generate_csr(info) unless File.exist? file(info,"key") and File.exist? file(info,"csr")
-  generate_cert(info) unless File.exist? file(info,"cert")
-  generate_combined_cert(info) unless File.exist? file(info,"combined") or !info['combined']
-  generate_fingerprint(info) unless File.exist? file(info,"cert","fingerprint") or !info['fingerprint']
-  generate_der(info) unless File.exist? file(info,"cert", "der") and File.exist? file(info,"key", "der") or !info['der']
   scp_certs(info) if info['scp']
 end
 
