@@ -16,6 +16,7 @@ require 'optparse'
 (opts=OptionParser.new do |opts|
    opts.banner = "Usage:\n\t#{$0} [options]"
    opts.on("-v", "--verbose",              "Turn up the verbosity")                                     { |v| $verbose = (($verbose||0))+1 }
+   opts.on("-n", "--dry-run",              "Don't really do anything")                                  { |d| $dryrun = true }
    opts.on("-c", "--config CONFDIR",       "Use this config dir (default: #{$conf_dir})")               { |d| $conf_dir = d }
    opts.on("--staging",                    "Use the letsencrypt staging CA")                            { |s| $staging = "https://acme-staging.api.letsencrypt.org" }
  end).parse!
@@ -40,6 +41,7 @@ end
 
 def generate_csr(info)
   puts "generating key + csr: #{file(info,"key")}, #{file(info,"csr")}" if ($verbose||0) == 1
+  return if $dryrun
   Vsh.system(*%W"#{$my_dir}/new-csr #{file(info,"key")} #{file(info,"csr")}
                     --hash=#{info["HASH"]        || $config["HASH"]}
                     --bits=#{info["RSA_BITS"]    || $config["RSA_BITS"]}
@@ -52,6 +54,7 @@ end
 
 def generate_cert(info)
   puts "generating cert: #{file(info,"cert")}" if ($verbose||0) == 1
+  return if $dryrun
   (well_known_host, well_known_dir) = [$1,$2] if (info['well-known']||'') =~ /^(?:((?:\w+@)?[^:]+):)?(.+)$/
   well_known_dir ||= '/var/www/well-known/acme-challenge/'
   Vsh.system *(%W<python #{$my_dir}/acme-tiny/acme_tiny.py --account-key #{$my_dir}/letsencrypt-account.key --csr #{file(info,"csr")} --acme-dir #{well_known_dir} --out #{file(info,"cert")}> +
@@ -65,17 +68,20 @@ end
 
 def generate_combined_cert(info)
   puts "generating combined cert: #{file(info,"combined")}" if ($verbose||0) == 1
+  return if $dryrun
   IO.write(file(info,"combined"), IO.read(file(info,"cert")) + IO.read(file(info,"key")), perm: 0640)
   Vsh.chown info['user'], info['group'], file(info,"combined")
 end
 
 def generate_fingerprint(info)
   puts "generating fingerprint: #{file(info,"cert","fingerprint")}" if ($verbose||0) == 1
+  return if $dryrun
   Sh.system(*%W"openssl x509 -in #{file(info,"cert")} -fingerprint -noout") > file(info,"cert","fingerprint")
 end
 
 def generate_der(info)
   puts "generating der: #{file(info,"key","der")}, #{file(info,"cert","der")}" if ($verbose||0) == 1
+  return if $dryrun
   Vsh.system *%W"openssl x509 -in #{file(info,"cert")} -outform der -out #{file(info,"cert","der")}"
   Vsh.system *%W"openssl rsa  -in #{file(info,"key") } -outform der -out #{file(info,"key", "der")}"
   Vsh.chmod "o-rw,g-w", file(info,"key","der")
@@ -84,6 +90,7 @@ end
 
 def scp_certs(info)
   puts "copying key and cert: #{info['scp']}" if ($verbose||0) == 1
+  return if $dryrun
   Vsh.system *%W"scp #{file(info,"cert")} #{file(info,"key")} #{info['scp']}"
 end
 
@@ -132,6 +139,7 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
       next if File.exist?(link) && File.absolute_path(File.readlink(link), $certs_dir) == File.absolute_path(master)
       (master,) = shortest_link_path(master, link)
       puts "#{link} -> #{master}" if ($verbose||0) == 1
+      next if $dryrun
       Vsh.unlink(link)
       Vsh.ln_s(master, link)
     end
