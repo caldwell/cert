@@ -122,7 +122,7 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
   time = File.exist?(file_master(info,"cert")) && days_til_expiry(file_master(info,"cert")) > 10 ? File.stat(file_master(info,"cert")).mtime : Time.now
   info['date'] = time.strftime("%Y-%m-%d")
   info['year'] = time.strftime("%Y")
-  [
+  ([
     [ :generate_csr,           [["key"],["csr"]],               true ],
     [ :generate_cert,          [["cert"]],                      true ],
     [ :generate_combined_cert, [["combined"]],                  info['combined'] ],
@@ -130,9 +130,14 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
     [ :generate_der,           [["cert", "der"],["key","der"]], info['der'] ],
   ].map do |method, file_param, doit|
     next unless doit
-    send(method, info) unless file_param.map { |p| file(info, *p) }.all? {|file| File.exist?(file) }
+    begin
+      send(method, info) unless file_param.map { |p| file(info, *p) }.all? {|file| File.exist?(file) }
+    rescue => e
+      warn e
+      break
+    end
     file_param
-  end.select { |fp| fp }.each do |files|
+  end||[]).select { |fp| fp }.each do |files|
     files.each do |file_param|
       link = file_master(info, *file_param)
       master = file(info, *file_param)

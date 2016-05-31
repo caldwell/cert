@@ -12,7 +12,7 @@ class VerboseShell
 
   def self.system(*args)
     system_trace *args
-    Kernel.system *args or abort "#{args[0]} failed"
+    Kernel.system *args or raise "#{args[0]} failed"
   end
 
   def self.mv(src,dest,options={})
