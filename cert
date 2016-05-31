@@ -57,7 +57,6 @@ def generate_cert(info)
   if $config["INTERMEDIATE"]
     puts "appending intermediate to cert: #{file(info,"cert")}" if ($verbose||0) == 1
     IO.write(file(info,"cert"), IO.read($config["INTERMEDIATE"]), perm: 0640, mode: "a")
-    Vsh.chown info['user'], info['group'], file(info,"combined")
   end
 end
 
