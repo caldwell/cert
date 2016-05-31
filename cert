@@ -119,9 +119,11 @@ $config = load_config(conf_file)
 $config.select {|k,v| v.class == Hash}.each do |name, info|
   info['name'] = name
   puts "Considering: #{info.inspect}"  if ($verbose||0) > 2
-  time = File.exist?(file_master(info,"cert")) && days_til_expiry(file_master(info,"cert")) > 10 ? File.stat(file_master(info,"cert")).mtime : Time.now
+  renew = File.exist?(file_master(info,"cert")) && days_til_expiry(file_master(info,"cert")) < 10
+  time = File.exist?(file_master(info,"cert")) && !renew ? File.stat(file_master(info,"cert")).mtime : Time.now
   info['date'] = time.strftime("%Y-%m-%d")
   info['year'] = time.strftime("%Y")
+  success = true
   ([
     [ :generate_csr,           [["key"],["csr"]],               true ],
     [ :generate_cert,          [["cert"]],                      true ],
@@ -134,6 +136,7 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
       send(method, info) unless file_param.map { |p| file(info, *p) }.all? {|file| File.exist?(file) }
     rescue => e
       warn e
+      success = false
       break
     end
     file_param
@@ -150,6 +153,7 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
     end
   end
   scp_certs(info) if info['scp']
+  Vsh.system(info['on_renew']) if success && renew && info['on_renew']
 end
 
 #require 'pp'
