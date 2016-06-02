@@ -39,6 +39,11 @@ def file_master(info, type, format="pem")
   "#{$certs_dir}/#{info['name']}.#{type}.#{format}"
 end
 
+def parse_time_from_filename(name)
+  raise "no date found in #{name}" unless m = name.match(/(20\d\d)-([01]\d)-([0123]\d)/)
+  Time.new(m[1],m[2],m[3])
+end
+
 def generate_csr(info)
   puts "generating key + csr: #{file(info,"key")}, #{file(info,"csr")}" if ($verbose||0) == 1
   return if $dryrun
@@ -117,7 +122,7 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
   info['name'] = name
   puts "Considering: #{info.inspect}"  if ($verbose||0) > 2
   renew = File.exist?(file_master(info,"cert")) && days_til_expiry(file_master(info,"cert")) < 10
-  time = File.exist?(file_master(info,"cert")) && !renew ? File.stat(file_master(info,"cert")).mtime : Time.now
+  time = File.exist?(file_master(info,"cert")) && !renew ? parse_time_from_filename(File.readlink(file_master(info,"cert"))) : Time.now
   info['date'] = time.strftime("%Y-%m-%d")
   info['year'] = time.strftime("%Y")
   success = true
