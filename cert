@@ -145,7 +145,7 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
       (master,) = shortest_link_path(master, link)
       puts "#{link} -> #{master}" if ($verbose||0) == 1
       next if $dryrun
-      Vsh.unlink(link)
+      Vsh.unlink(link) rescue nil
       Vsh.ln_s(master, link)
     end
   end
