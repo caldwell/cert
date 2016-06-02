@@ -121,8 +121,9 @@ $config = load_config(conf_file)
 $config.select {|k,v| v.class == Hash}.each do |name, info|
   info['name'] = name
   puts "Considering: #{info.inspect}"  if ($verbose||0) > 2
-  renew = File.exist?(file_master(info,"cert")) && days_til_expiry(file_master(info,"cert")) < 10
-  time = File.exist?(file_master(info,"cert")) && !renew ? parse_time_from_filename(File.readlink(file_master(info,"cert"))) : Time.now
+  certfile = file_master(info,"cert")
+  renew = File.exist?(certfile) && days_til_expiry(certfile) < 10
+  time = File.exist?(certfile) && !renew ? parse_time_from_filename(File.readlink(certfile)) : Time.now
   info['date'] = time.strftime("%Y-%m-%d")
   info['year'] = time.strftime("%Y")
   success = true
