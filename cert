@@ -42,6 +42,7 @@ end
 def generate_csr(info)
   puts "generating key + csr: #{file(info,"key")}, #{file(info,"csr")}" if ($verbose||0) == 1
   return if $dryrun
+  Vsh.mkdir_p File.dirname(file(info,"key"))
   Vsh.system(*%W"#{$my_dir}/new-csr #{file(info,"key")} #{file(info,"csr")}
                     --hash=#{info["HASH"]        || $config["HASH"]}
                     --bits=#{info["RSA_BITS"]    || $config["RSA_BITS"]}
