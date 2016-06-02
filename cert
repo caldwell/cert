@@ -85,10 +85,10 @@ def generate_der(info)
   Vsh.chown info['user'], info['group'], file(info,"key","der")
 end
 
-def scp_certs(info)
+def scp_certs(info, file_params)
   puts "copying key and cert: #{info['scp']}" if ($verbose||0) == 1
   return if $dryrun
-  Vsh.system *%W"scp #{file(info,"cert")} #{file(info,"key")} #{info['scp']}"
+  Vsh.system 'scp', *(file_params.map { |p| file(info,*p) }), info['scp']
 end
 
 def seconds_til_expiry(file)
@@ -121,7 +121,7 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
   info['date'] = time.strftime("%Y-%m-%d")
   info['year'] = time.strftime("%Y")
   success = true
-  ([
+  files = ([
     [ :generate_csr,           [["key"],["csr"]],               true ],
     [ :generate_cert,          [["cert"]],                      true ],
     [ :generate_combined_cert, [["combined"]],                  info['combined'] ],
@@ -148,8 +148,8 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
       Vsh.unlink(link) rescue nil
       Vsh.ln_s(master, link)
     end
-  end
-  scp_certs(info) if info['scp']
+  end.flatten(1)
+  scp_certs(info, files) if info['scp']
   Vsh.system(info['on_renew']) if success && renew && info['on_renew']
 end
 
