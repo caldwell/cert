@@ -63,7 +63,7 @@ def generate_cert(info)
   return if $dryrun
   (well_known_host, well_known_dir) = [$1,$2] if (info['well-known']||'') =~ /^(?:((?:\w+@)?[^:]+):)?(.+)$/
   well_known_dir ||= '/var/www/well-known/acme-challenge/'
-  Vsh.system *(%W<python #{$my_dir}/acme-tiny/acme_tiny.py --account-key #{$my_dir}/letsencrypt-account.key --csr #{file(info,"csr")} --acme-dir #{well_known_dir} --out #{file(info,"cert")}> +
+  Vsh.system *(%W<python #{$my_dir}/acme-tiny/acme_tiny.py --chain --account-key #{$my_dir}/letsencrypt-account.key --csr #{file(info,"csr")} --acme-dir #{well_known_dir} --out #{file(info,"cert")}> +
                ($staging ? ['--ca', $staging] : []) +
                (well_known_host ? ['--acme-host', well_known_host] : []))
 end
