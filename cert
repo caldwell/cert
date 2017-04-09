@@ -168,15 +168,15 @@ end
 def generate_fingerprint(info)
   puts "generating fingerprint: #{file(info,"cert","fingerprint")}" if ($verbose||0) == 1
   return if $dryrun
-  Sh.system(*%W"openssl x509 -in #{file(info,"cert")} -fingerprint -noout") > file(info,"cert","fingerprint")
+  der = OpenSSL::X509::Certificate.new(IO.read file(info,"cert")).to_der
+  IO.write(file(info,"cert","fingerprint"), Digest::SHA1.digest(der).bytes.map {|d| sprintf("%02X", d)}.join(':'), perm: 0644)
 end
 
 def generate_der(info)
   puts "generating der: #{file(info,"key","der")}, #{file(info,"cert","der")}" if ($verbose||0) == 1
   return if $dryrun
-  Vsh.system *%W"openssl x509 -in #{file(info,"cert")} -outform der -out #{file(info,"cert","der")}"
-  Vsh.system *%W"openssl rsa  -in #{file(info,"key") } -outform der -out #{file(info,"key", "der")}"
-  Vsh.chmod "o-rw,g-w", file(info,"key","der")
+  IO.write(file(info,"cert","der"), OpenSSL::X509::Certificate.new(IO.read file(info,"cert")).to_der, perm: 0644)
+  IO.write(file(info,"key", "der"), OpenSSL::PKey::RSA.new(IO.read file(info,"key")).to_der, perm: 0600)
   Vsh.chown info['user'], info['group'], file(info,"key","der")
 end
 
