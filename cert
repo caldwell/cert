@@ -3,6 +3,7 @@
 require 'yaml'
 require 'fileutils'
 require 'openssl'
+require 'docopt'
 
 $my_dir = File.dirname($0)
 $conf_dir = $my_dir
@@ -12,14 +13,28 @@ require File.join $my_dir,'verbose-shell.rb'
 Sh=Shell.new
 Vsh = VerboseShell
 
-require 'optparse'
-(opts=OptionParser.new do |opts|
-   opts.banner = "Usage:\n\t#{$0} [options]"
-   opts.on("-v", "--verbose",              "Turn up the verbosity")                                     { |v| $verbose = (($verbose||0))+1 }
-   opts.on("-n", "--dry-run",              "Don't really do anything")                                  { |d| $dryrun = true }
-   opts.on("-c", "--config CONFDIR",       "Use this config dir (default: #{$conf_dir})")               { |d| $conf_dir = d }
-   opts.on("--staging",                    "Use the letsencrypt staging CA")                            { |s| $staging = "https://acme-staging.api.letsencrypt.org" }
- end).parse!
+doc = <<-DOCOPT
+    Usage:
+        cert [-v...] [options]
+
+    Options:
+            -v, --verbose                 Turn up the verbosity
+            -n, --dry-run                 Don't really do anything
+            -c, --config=<confdir>        Use this config dir (default: #{$conf_dir})
+            --staging                     Use the letsencrypt staging CA
+    DOCOPT
+
+args = begin
+         Docopt::docopt(doc)
+       rescue Docopt::Exit => e
+         puts e.message
+         exit 1
+       end
+
+$verbose = args['--verbose']
+$dryrun = args['--dry-run']
+$conf_dir = args['--config'] if args['--config']
+$staging = "https://acme-staging.api.letsencrypt.org" if args['--staging']
 
 $certs_dir = "#{$conf_dir}/certs"
 
