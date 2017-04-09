@@ -4,6 +4,7 @@ require 'yaml'
 require 'fileutils'
 require 'openssl'
 require 'docopt'
+require 'acme-client'
 
 $my_dir = File.dirname($0)
 $conf_dir = $my_dir
@@ -34,7 +35,7 @@ args = begin
 $verbose = args['--verbose']
 $dryrun = args['--dry-run']
 $conf_dir = args['--config'] if args['--config']
-$staging = "https://acme-staging.api.letsencrypt.org" if args['--staging']
+$staging = args['--staging']
 
 $certs_dir = "#{$conf_dir}/certs"
 
@@ -62,25 +63,99 @@ end
 def generate_csr(info)
   puts "generating key + csr: #{file(info,"key")}, #{file(info,"csr")}" if ($verbose||0) == 1
   return if $dryrun
+  key = OpenSSL::PKey::RSA.new info["RSA_BITS"] || $config["RSA_BITS"]
+  csr = Acme::Client::CertificateRequest.new(private_key: key,
+                                             names: info['alt'] ? info['alt'].map {|a| a['DNS'] }.select {|a| a} : [],
+                                             subject: Hash[
+                                               [%w'cn           CN',
+                                                %w'country      C',
+                                                %w'organization O',
+                                                %w'section      OU',
+                                                %w'state        ST',
+                                                %w'locality     L',
+                                                %w'email        emailAddress',
+                                               ]
+                                               .map {|us,them| !info[us] ? nil : [them, info[us]] }
+                                               .select {|x| x}]
+                                            )
   Vsh.mkdir_p File.dirname(file(info,"key"))
-  Vsh.system(*%W"#{$my_dir}/new-csr #{file(info,"key")} #{file(info,"csr")}
-                    --hash=#{info["HASH"]        || $config["HASH"]}
-                    --bits=#{info["RSA_BITS"]    || $config["RSA_BITS"]}
-                    --days=#{info["EXPIRE_DAYS"] || $config["EXPIRE_DAYS"]}"+
-             %w"country state locality organization section cn email".map {|p| info[p] && "--#{p}=#{info[p]}" }.select {|s| s}+
-             (info['alt'] ? info['alt'].map {|a| a['DNS'] }.select {|a| a}.map {|a| "--alt-dns=#{a}" } : [])
-            )
+  IO.write(file(info,"csr"), csr.to_pem, perm: 0644)
+  IO.write(file(info,"key"), key.to_pem, perm: 0600)
   Vsh.chown info['user'], info['group'], file(info,"key")
 end
 
+def with_well_known_files(challenge, well_known_dir, well_known_host)
+  paths = challenge.map do |ch|
+    well_known_path = "#{well_known_dir}/#{ch.token}"
+    if well_known_host
+      puts "Writing challenge for #{ch.authorization.domain} to #{well_known_host}:#{well_known_path}" if ($verbose||0) >= 2
+      IO.popen(["ssh", well_known_host, "cat", '>', well_known_path], "w") {|io| io.write ch.file_content}
+    else
+      IO.write(well_known_path, ch.file_content)
+    end
+    well_known_path
+  end
+  begin
+    yield
+  ensure
+    paths.each do |path|
+      if well_known_host
+        Vsh.system *%W"ssh #{well_known_host} rm #{path}"
+      else
+        File.delete(path)
+      end
+    end
+  end
+end
+
 def generate_cert(info)
-  puts "generating cert: #{file(info,"cert")}" if ($verbose||0) == 1
+  puts "generating cert: #{file(info,"cert")}" if ($verbose||0) >= 1
   return if $dryrun
   (well_known_host, well_known_dir) = [$1,$2] if (info['well-known']||'') =~ /^(?:((?:\w+@)?[^:]+):)?(.+)$/
   well_known_dir ||= '/var/www/well-known/acme-challenge/'
-  Vsh.system *(%W<python #{$my_dir}/acme-tiny/acme_tiny.py --chain --account-key #{$my_dir}/letsencrypt-account.key --csr #{file(info,"csr")} --acme-dir #{well_known_dir} --out #{file(info,"cert")}> +
-               ($staging ? ['--ca', $staging] : []) +
-               (well_known_host ? ['--acme-host', well_known_host] : []))
+
+  endpoint            = $staging ? 'https://acme-staging.api.letsencrypt.org/' : 'https://acme-v01.api.letsencrypt.org/'
+
+  csr = OpenSSL::X509::Request.new File.read file(info, "csr")
+  account_key = OpenSSL::PKey::RSA.new File.read "#{$conf_dir}/letsencrypt-account.key"
+
+  client = Acme::Client.new(private_key: account_key, endpoint: endpoint, connection_options: { request: { open_timeout: 5, timeout: 5 } })
+
+  begin
+    puts "Registering with acme server" if ($verbose||0) >= 2
+    registration = client.register(contact: "mailto:#{$config['email']}")
+    registration.agree_terms
+  rescue => e
+    raise unless e.message == "Registration key is already in use"
+    puts "Already registered" if ($verbose||0) >= 2
+  end
+
+  authorization = ([ info['cn'] ] + (info['alt'] ? info['alt'].map {|a| a['DNS'] }.select {|a| a} : []))
+                  .uniq
+                  .map {|name| { name: name, authorization: client.authorize(domain: name) } }
+                  .select {|auth| auth[:authorization].status == 'pending' }
+
+  unless authorization.empty?
+    challenge = authorization.map {|auth| auth[:authorization].http01 }
+    with_well_known_files(challenge, well_known_dir, well_known_host) do
+      challenge.each {|ch| ch.request_verification }
+      start = Time::now
+      while challenge.any? {|ch| ch.verify_status == 'pending' }
+        puts "Authorizations are pending" if ($verbose||0) >= 2
+        raise 'Timeout waiting for letsencrypt to validate our challenge' if Time::now > start + 60
+        sleep 1
+      end
+      bad = challenge.select {|ch| ch.status != 'valid' }
+      raise 'Bad challenge verify_status: '+bad.map {|b| "#{b.authorization.domain} => '#{b.status}'" }.join(", ") unless bad.empty?
+      puts "Authorizations succeeded" if ($verbose||0) >= 2
+    end
+  end
+
+  puts "Requesting certificate" if ($verbose||0) >= 2
+  crt = client.new_certificate(csr)
+
+  puts "Saving certificate to disk" if ($verbose||0) >= 2
+  IO.write(file(info, "cert"), crt.fullchain_to_pem, perm: 0644)
 end
 
 def generate_combined_cert(info)
