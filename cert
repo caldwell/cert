@@ -182,7 +182,7 @@ end
 
 def scp_certs(info, file_params)
   files_to_copy = file_params.map { |p| file_master(info,*p) }
-                  .select { |f| File.mtime(f) > (File.mtime("#{f}.scp-stamp") rescue Time.new(0)) }
+                  .select { |f| File.exist?(f) && File.mtime(f) > (File.mtime("#{f}.scp-stamp") rescue Time.new(0)) }
   return unless files_to_copy.count > 0
   puts "copying #{files_to_copy}: #{info['scp']}" if ($verbose||0) == 1
   return if $dryrun
