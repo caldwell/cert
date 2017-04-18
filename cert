@@ -252,8 +252,8 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
       Vsh.ln_s(master, link)
     end
   end.flatten(1)
-  scp_certs(info, files) if info['scp']
-  Vsh.system(info['on_renew']) if success && renew && info['on_renew']
+  scp_certs(info, files) if info['scp'] && !$dryrun
+  Vsh.system(info['on_renew']) if success && renew && info['on_renew'] && !$dryrun
 end
 
 #require 'pp'
