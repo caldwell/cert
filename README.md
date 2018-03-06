@@ -140,6 +140,30 @@ There are also some top level keys to set global options:
     are loaded and merged into the config file. Note, including only works
     in the main config files. Included files cannot include more files.
 
+# Invocation
+
+Running cert will check the certificates, acquire any new certificates, and
+renew any that are within 10 days of expiry.
+
+## Command line options
+
+ - `-v`, `--verbose`: Turn up the verbosity. By default the program is
+   silent except for errors. Add the option multiple times to increase the
+   logging detail.
+
+ - `-n`, `--dry-run`: Don't really do anything (not super useful unless you
+   have `--verbose` on as well).
+
+ - `-c`, `--config=<confdir>`: Use a different config directory. The config
+   directory is where the `config.yaml` file and the `certs` output
+   directory are located. By default the config directory is in the same
+   directory as the cert program itself.
+
+ - `--staging`: Use the Let's Encrypt staging CA--this will go through the
+   motions but the certs you recieve will not be usable. Use this to test
+   your configuration, so you don't use up your Let's Encyrpt certificate
+   quotas on tests.
+
 # Bugs
 
 There are no bugs in this program. 😇 
