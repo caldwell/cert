@@ -4,9 +4,16 @@ GEM
     acme-client (0.5.5)
       faraday (~> 0.9, >= 0.9.1)
     docopt (0.6.0)
+    equatable (0.5.0)
     faraday (0.12.0.1)
       multipart-post (>= 1.2, < 3)
     multipart-post (2.0.0)
+    pastel (0.7.2)
+      equatable (~> 0.5.0)
+      tty-color (~> 0.4.0)
+    tty-color (0.4.2)
+    verbose-shell (0.1.1)
+      pastel (~> 0.7.2)
 
 PLATFORMS
   ruby
@@ -14,6 +21,7 @@ PLATFORMS
 DEPENDENCIES
   acme-client
   docopt
+  verbose-shell
 
 BUNDLED WITH
-   1.13.6
+   1.15.1
