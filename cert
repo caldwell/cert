@@ -63,7 +63,7 @@ end
 def generate_csr(info)
   puts "generating key + csr: #{file(info,"key")}, #{file(info,"csr")}" if ($verbose||0) == 1
   return if $dryrun
-  key = OpenSSL::PKey::RSA.new info["RSA_BITS"] || $config["RSA_BITS"]
+  key = OpenSSL::PKey::RSA.new info["RSA_BITS"] || $config["RSA_BITS"] || 4096
   csr = Acme::Client::CertificateRequest.new(private_key: key,
                                              names: info['alt'] ? info['alt'].map {|a| a['DNS'] }.select {|a| a} : [],
                                              subject: Hash[
@@ -118,7 +118,7 @@ def generate_cert(info)
 
   csr = OpenSSL::X509::Request.new File.read file(info, "csr")
   acct_key_file = "#{$conf_dir}/letsencrypt-account.key"
-  IO.write(acct_key_file, OpenSSL::PKey::RSA.new(info["RSA_BITS"] || $config["RSA_BITS"]).to_pem) unless File.exist? acct_key_file
+  IO.write(acct_key_file, OpenSSL::PKey::RSA.new(info["RSA_BITS"] || $config["RSA_BITS"] || 4096).to_pem) unless File.exist? acct_key_file
   account_key = OpenSSL::PKey::RSA.new IO.read acct_key_file
 
   client = Acme::Client.new(private_key: account_key, endpoint: endpoint, connection_options: { request: { open_timeout: 5, timeout: 5 } })
