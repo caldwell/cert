@@ -94,12 +94,7 @@ Each cert entry is also a hash where the keys define various options:
   - `cn` (Required): The "Common Name" for the certificate. This is the main
     domain name, fully qualified.
 
-  - `country`
-  - `organization`
-  - `section`
-  - `state`
-  - `locality`
-  - `email`
+  - `country`, `organization`, `section`, `state`, `locality`, `email`
     (Not Required): These go into the various fields of the certificate
     "Subject". These are all ignored by Let's Encrypt, but you can use them as
     documentation.
