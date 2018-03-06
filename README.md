@@ -29,7 +29,7 @@ Then I set up a cron job that looks like this:
 
 # Configuration
 
-Cert is configured by a single yaml file. Here's an example:
+Cert is configured by a single yaml file (named `config.yaml`). Here's an example:
 
     cyrus-imap-server:
       section   : "IMAP Server"
@@ -84,10 +84,11 @@ that point to the latest files:
 
 ## Configuration details
 
-Certificates are defined by top level hash entries in the YAML file. The key
-is what defines the name of the resulting files on the disk. This means they
-are restricted to the character set that is available for files (IE, no `/`,
-though space will probably work but hasn't been tested).
+Certificates are defined by top level hash entries in the `config.yaml`
+file. The key is what defines the name of the resulting files on the
+disk. This means they are restricted to the character set that is available
+for files (IE, no `/`, though space will probably work but hasn't been
+tested).
 
 Each cert entry is also a hash where the keys define various options:
 
