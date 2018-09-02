@@ -91,7 +91,7 @@ def with_well_known_files(challenge, well_known_dir, well_known_host)
   paths = challenge.map do |ch|
     well_known_path = "#{well_known_dir}/#{ch.token}"
     if well_known_host
-      puts "Writing challenge for #{ch.authorization.domain} to #{well_known_host}:#{well_known_path}" if ($verbose||0) >= 2
+      puts "Writing challenge to #{well_known_host}:#{well_known_path}" if ($verbose||0) >= 2
       IO.popen(["ssh", well_known_host, "cat", '>', well_known_path], "w") {|io| io.write ch.file_content}
     else
       IO.write(well_known_path, ch.file_content)
@@ -117,50 +117,54 @@ def generate_cert(info)
   (well_known_host, well_known_dir) = [$1,$2] if (info['well-known']||'') =~ /^(?:((?:\w+@)?[^:]+):)?(.+)$/
   well_known_dir ||= '/var/www/well-known/acme-challenge/'
 
-  endpoint            = $staging ? 'https://acme-staging.api.letsencrypt.org/' : 'https://acme-v01.api.letsencrypt.org/'
+  endpoint            = $staging ? 'https://acme-staging-v02.api.letsencrypt.org/directory' : 'https://acme-v02.api.letsencrypt.org/directory'
 
   csr = OpenSSL::X509::Request.new File.read file(info, "csr")
   acct_key_file = "#{$conf_dir}/letsencrypt-account.key"
   IO.write(acct_key_file, OpenSSL::PKey::RSA.new(info["RSA_BITS"] || $config["RSA_BITS"] || 4096).to_pem) unless File.exist? acct_key_file
   account_key = OpenSSL::PKey::RSA.new IO.read acct_key_file
 
-  client = Acme::Client.new(private_key: account_key, endpoint: endpoint, connection_options: { request: { open_timeout: 30, timeout: 30 } })
+  client = Acme::Client.new(private_key: account_key, directory: endpoint, connection_options: { request: { open_timeout: 35, timeout: 35 } })
 
   begin
     puts "Registering with acme server" if ($verbose||0) >= 2
-    registration = client.register(contact: "mailto:#{$config['email']}")
-    registration.agree_terms
+    account = client.new_account(contact: "mailto:#{$config['email']}", terms_of_service_agreed: true)
   rescue => e
-    raise unless e.message == "Registration key is already in use"
+    raise e unless e.message == "Registration key is already in use"
     puts "Already registered" if ($verbose||0) >= 2
   end
 
-  authorization = ([ info['cn'] ] + (info['alt'] ? info['alt'].map {|a| a['DNS'] }.select {|a| a} : []))
-                  .uniq
-                  .map {|name| { name: name, authorization: client.authorize(domain: name) } }
-                  .select {|auth| auth[:authorization].status == 'pending' }
+  order = client.new_order(identifiers: ([ info['cn'] ] + (info['alt'] ? info['alt'].map {|a| a['DNS'] }.select {|a| a} : [])).uniq)
+
+  authorization = order.authorizations
 
   unless authorization.empty?
-    challenge = authorization.map {|auth| auth[:authorization].http01 }
+    challenge = authorization.map {|auth| auth.http }
     with_well_known_files(challenge, well_known_dir, well_known_host) do
-      challenge.each {|ch| ch.request_verification }
+      challenge.each {|ch| ch.request_validation }
       start = Time::now
-      while challenge.any? {|ch| ch.verify_status == 'pending' }
+      while challenge.any? {|ch| ch.status == 'pending' }
         puts "Authorizations are pending" if ($verbose||0) >= 2
         raise 'Timeout waiting for letsencrypt to validate our challenge' if Time::now > start + 60
         sleep 1
       end
       bad = challenge.select {|ch| ch.status != 'valid' }
-      raise 'Bad challenge verify_status: '+bad.map {|b| "#{b.authorization.domain} => '#{b.status}'" }.join(", ") unless bad.empty?
+      raise 'Bad challenge verify_status: '+bad.map {|b| "#{authorization.domain} => '#{b.status}'" }.join(", ") unless bad.empty?
       puts "Authorizations succeeded" if ($verbose||0) >= 2
     end
   end
 
   puts "Requesting certificate" if ($verbose||0) >= 2
-  crt = client.new_certificate(csr)
-
+  order.finalize(csr: csr)
+  start = Time::now
+  while order.status == 'processing'
+    puts "Finalizing certificate order (pending)" if ($verbose||0) >= 2
+    raise 'Timeout waiting for letsencrypt to finalize the order' if Time::now > start + 60
+    sleep 1
+  end
+  
   puts "Saving certificate to disk" if ($verbose||0) >= 2
-  IO.write(file(info, "cert"), crt.fullchain_to_pem, perm: 0644)
+  IO.write(file(info, "cert"), order.certificate, perm: 0644)
 end
 
 def generate_combined_cert(info)
