@@ -111,28 +111,34 @@ def with_well_known_files(challenge, well_known_dir, well_known_host)
   end
 end
 
+def acme_client()
+  if !$client
+    endpoint = $staging ? 'https://acme-staging-v02.api.letsencrypt.org/directory' : 'https://acme-v02.api.letsencrypt.org/directory'
+    acct_key_file = "#{$conf_dir}/letsencrypt-account.key"
+    IO.write(acct_key_file, OpenSSL::PKey::RSA.new(info["RSA_BITS"] || $config["RSA_BITS"] || 4096).to_pem) unless File.exist? acct_key_file
+    account_key = OpenSSL::PKey::RSA.new IO.read acct_key_file
+
+    $client = Acme::Client.new(private_key: account_key, directory: endpoint, connection_options: { request: { open_timeout: 35, timeout: 35 } })
+    begin
+      puts "Registering with acme server" if ($verbose||0) >= 2
+      account = $client.new_account(contact: "mailto:#{$config['email']}", terms_of_service_agreed: true)
+    rescue => e
+      raise e unless e.message == "Registration key is already in use"
+      puts "Already registered" if ($verbose||0) >= 2
+    end
+  end
+  $client
+end
+
 def generate_cert(info)
   puts "generating cert: #{file(info,"cert")}" if ($verbose||0) >= 1
   return if $dryrun
   (well_known_host, well_known_dir) = [$1,$2] if (info['well-known']||'') =~ /^(?:((?:\w+@)?[^:]+):)?(.+)$/
   well_known_dir ||= '/var/www/well-known/acme-challenge/'
 
-  endpoint            = $staging ? 'https://acme-staging-v02.api.letsencrypt.org/directory' : 'https://acme-v02.api.letsencrypt.org/directory'
-
   csr = OpenSSL::X509::Request.new File.read file(info, "csr")
-  acct_key_file = "#{$conf_dir}/letsencrypt-account.key"
-  IO.write(acct_key_file, OpenSSL::PKey::RSA.new(info["RSA_BITS"] || $config["RSA_BITS"] || 4096).to_pem) unless File.exist? acct_key_file
-  account_key = OpenSSL::PKey::RSA.new IO.read acct_key_file
 
-  client = Acme::Client.new(private_key: account_key, directory: endpoint, connection_options: { request: { open_timeout: 35, timeout: 35 } })
-
-  begin
-    puts "Registering with acme server" if ($verbose||0) >= 2
-    account = client.new_account(contact: "mailto:#{$config['email']}", terms_of_service_agreed: true)
-  rescue => e
-    raise e unless e.message == "Registration key is already in use"
-    puts "Already registered" if ($verbose||0) >= 2
-  end
+  client = acme_client()
 
   order = client.new_order(identifiers: ([ info['cn'] ] + (info['alt'] ? info['alt'].map {|a| a['DNS'] }.select {|a| a} : [])).uniq)
 
