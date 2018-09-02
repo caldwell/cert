@@ -138,20 +138,18 @@ def generate_cert(info)
 
   authorization = order.authorizations
 
-  unless authorization.empty?
-    challenge = authorization.map {|auth| auth.http }
-    with_well_known_files(challenge, well_known_dir, well_known_host) do
-      challenge.each {|ch| ch.request_validation }
-      start = Time::now
-      while challenge.any? {|ch| ch.status == 'pending' }
-        puts "Authorizations are pending" if ($verbose||0) >= 2
-        raise 'Timeout waiting for letsencrypt to validate our challenge' if Time::now > start + 60
-        sleep 1
-      end
-      bad = challenge.select {|ch| ch.status != 'valid' }
-      raise 'Bad challenge verify_status: '+bad.map {|b| "#{authorization.domain} => '#{b.status}'" }.join(", ") unless bad.empty?
-      puts "Authorizations succeeded" if ($verbose||0) >= 2
+  challenge = authorization.map {|auth| auth.http }
+  with_well_known_files(challenge, well_known_dir, well_known_host) do
+    challenge.each {|ch| ch.request_validation }
+    start = Time::now
+    while challenge.any? {|ch| ch.status == 'pending' }
+      puts "Authorizations are pending" if ($verbose||0) >= 2
+      raise 'Timeout waiting for letsencrypt to validate our challenge' if Time::now > start + 60
+      sleep 1
     end
+    bad = challenge.select {|ch| ch.status != 'valid' }
+    raise 'Bad challenge verify_status: '+bad.map {|b| "#{authorization.domain} => '#{b.status}'" }.join(", ") unless bad.empty?
+    puts "Authorizations succeeded" if ($verbose||0) >= 2
   end
 
   puts "Requesting certificate" if ($verbose||0) >= 2
