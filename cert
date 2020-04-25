@@ -12,9 +12,7 @@ require 'acme-client'
 $my_dir = File.dirname($0)
 $conf_dir = $my_dir
 
-require 'shell'
 require 'verbose-shell'
-Sh=Shell.new
 Vsh = VerboseShell
 
 doc = <<-DOCOPT
