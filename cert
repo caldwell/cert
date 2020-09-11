@@ -150,6 +150,7 @@ def generate_cert(info)
       puts "Authorizations are pending" if ($verbose||0) >= 2
       raise 'Timeout waiting for letsencrypt to validate our challenge' if Time::now > start + 60
       sleep 1
+      challenge.map {|ch| ch.reload }
     end
     bad = challenge.select {|ch| ch.status != 'valid' }
     raise 'Bad challenge verify_status: '+bad.map {|b| "#{authorization.domain} => '#{b.status}'" }.join(", ") unless bad.empty?
@@ -163,6 +164,7 @@ def generate_cert(info)
     puts "Finalizing certificate order (pending)" if ($verbose||0) >= 2
     raise 'Timeout waiting for letsencrypt to finalize the order' if Time::now > start + 60
     sleep 1
+    order.reload
   end
   
   puts "Saving certificate to disk" if ($verbose||0) >= 2
