@@ -246,7 +246,8 @@ $config.select {|k,v| v.class == Hash}.each do |name, info|
     begin
       send(method, info) unless file_param.map { |p| file(info, *p) }.all? {|file| File.exist?(file) }
     rescue => e
-      warn e
+      warn "#{name} failed: #{e}"
+      warn e.backtrace
       success = false
       break
     end
