@@ -1,15 +1,15 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    acme-client (2.0.10)
+    acme-client (2.0.11)
       faraday (>= 1.0, < 3.0.0)
       faraday-retry (~> 1.0)
     docopt (0.6.1)
     equatable (0.7.0)
-    faraday (2.2.0)
-      faraday-net_http (~> 2.0)
+    faraday (2.7.2)
+      faraday-net_http (>= 2.0, < 3.1)
       ruby2_keywords (>= 0.0.4)
-    faraday-net_http (2.0.1)
+    faraday-net_http (3.0.2)
     faraday-retry (1.0.3)
     pastel (0.7.4)
       equatable (~> 0.6)
@@ -20,7 +20,7 @@ GEM
       pastel (~> 0.7.2)
 
 PLATFORMS
-  ruby
+  x86_64-linux
 
 DEPENDENCIES
   acme-client (~> 2.0)
@@ -28,4 +28,4 @@ DEPENDENCIES
   verbose-shell
 
 BUNDLED WITH
-   2.1.4
+   2.3.15
