@@ -24,7 +24,7 @@ GEM
       equatable (~> 0.6)
       tty-color (~> 0.5)
     tty-color (0.6.0)
-    uri (1.0.2)
+    uri (1.0.4)
     verbose-shell (0.2.1)
       pastel (~> 0.7.2)
 
